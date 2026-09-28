@@ -4,7 +4,7 @@
 
 ## 当前阶段
 
-当前已完成**阶段 1~6**：项目骨架、数据库模型、BV 评论采集、标签批量搜索、播放量区间选择与断点续爬、可插拔情感分析、统计分析与图表、PySide6 桌面 UI 与历史任务。后续阶段为测试与打包。
+当前已完成**阶段 1~7**：项目骨架、数据库模型、BV 评论采集、标签批量搜索、播放量区间选择与断点续爬、可插拔情感分析、统计分析与图表、PySide6 桌面 UI、历史任务、测试与 PyInstaller 打包。
 
 ## 技术栈
 
@@ -46,6 +46,14 @@ python main.py
 ```
 
 首次启动会自动在 `data/` 下创建 SQLite 数据库。界面包含首页任务列表、采集配置、进度、分析结果、用户详情和设置六个页面。
+
+## 打包 Windows exe
+
+```powershell
+.\.venv\Scripts\pyinstaller.exe bili_analyzer.spec --noconfirm --clean
+```
+
+产物位于 `dist\BiliCommentAnalyzer\`，双击 `BiliCommentAnalyzer.exe` 即可运行。
 
 ## CLI 用法
 
