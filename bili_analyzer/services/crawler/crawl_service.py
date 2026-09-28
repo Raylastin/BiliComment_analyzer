@@ -51,16 +51,35 @@ class CrawlService:
         if not parsed_video.get("bvid"):
             raise ValueError(f"Video not found for bvid: {bvid}")
 
-        with self.session_factory() as session:
-            video = self._upsert_video(session, parsed_video)
-            aid = parsed_video["aid"] or video.aid
-            if task_id:
-                self._link_task_video(session, task_id, video.id)
-            session.commit()
+        video_id, aid = self.upsert_video_data(parsed_video, task_id=task_id)
+        _ = video_id
         if not aid:
             raise ValueError(f"Video aid missing for bvid: {bvid}")
 
-        stats = {"videos": 1, "comments": 0, "replies": 0, "skipped": 0}
+        comment_stats = self.crawl_comments(
+            bvid=bvid,
+            aid=aid,
+            include_replies=include_replies,
+            task_id=task_id,
+            page_size=page_size,
+            max_pages=max_pages,
+            progress_callback=progress_callback,
+            cancel_check=cancel_check,
+        )
+        return {"videos": 1, **comment_stats}
+
+    def crawl_comments(
+        self,
+        bvid: str,
+        aid: int,
+        include_replies: bool = True,
+        task_id: int | None = None,
+        page_size: int = 49,
+        max_pages: int | None = None,
+        progress_callback: ProgressCallback | None = None,
+        cancel_check: CancelCheck | None = None,
+    ) -> dict[str, int]:
+        stats = {"comments": 0, "replies": 0, "skipped": 0}
         page = 1
         while True:
             if cancel_check and cancel_check():
@@ -108,6 +127,18 @@ class CrawlService:
             page += 1
 
         return stats
+
+    def upsert_video_data(
+        self,
+        data: dict[str, Any],
+        task_id: int | None = None,
+    ) -> tuple[int, int | None]:
+        with self.session_factory() as session:
+            video = self._upsert_video(session, data)
+            if task_id:
+                self._link_task_video(session, task_id, video.id)
+            session.commit()
+            return video.id, video.aid
 
     def _crawl_replies(
         self,

@@ -1,0 +1,11 @@
+{
+  "keyword": "标签名",
+  "start_time": "2024-01-01T00:00:00",
+  "end_time": "2024-12-31T23:59:59",
+  "include_replies": true,
+  "page_size": 20,
+  "buckets": [
+    {"bucket_key": "100_1000", "count": 5, "sort_by": "play", "max_pages": 2},
+    {"bucket_key": "1000_10000", "count": 3, "sort_by": "pubdate", "max_pages": 2}
+  ]
+}

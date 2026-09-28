@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from bili_analyzer.services.crawler.parsers import (
     parse_comment,
+    parse_count_text,
+    parse_search_results,
     parse_video_info,
 )
 
@@ -59,4 +61,24 @@ def test_parse_main_comment_and_reply():
     assert reply_parsed["parent_rpid"] == 1001
     assert reply_parsed["root_rpid"] == 1001
     assert reply_parsed["is_reply"] is True
+
+
+def test_parse_count_text():
+    assert parse_count_text("12.3万") == 123000
+    assert parse_count_text("1.2亿") == 120000000
+    assert parse_count_text("500") == 500
+    assert parse_count_text(None) == 0
+
+
+def test_parse_search_results():
+    data = {
+        "result": [
+            {"bvid": "BV100", "aid": 1, "title": "A", "pubdate": 1717200000, "play": "1.2万"},
+            {"aid": 2, "title": "missing bvid"},
+        ]
+    }
+    items = parse_search_results(data)
+    assert len(items) == 1
+    assert items[0]["bvid"] == "BV100"
+    assert items[0]["play_count"] == 12000
 

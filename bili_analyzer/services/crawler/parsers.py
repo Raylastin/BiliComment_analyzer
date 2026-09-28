@@ -85,3 +85,46 @@ def parse_comment_list(data: dict[str, Any]) -> list[dict[str, Any]]:
         return []
     return replies
 
+
+def parse_search_results(data: dict[str, Any]) -> list[dict[str, Any]]:
+    """Parse search/type video results into minimal candidate items."""
+    result = data.get("result")
+    if not isinstance(result, list):
+        return []
+    items: list[dict[str, Any]] = []
+    for item in result:
+        bvid = item.get("bvid")
+        if not bvid:
+            continue
+        items.append(
+            {
+                "bvid": str(bvid),
+                "aid": _as_int(item.get("aid")),
+                "title": item.get("title"),
+                "pubdate": _ts_to_dt(item.get("pubdate")),
+                "play_count": parse_count_text(item.get("play")),
+            }
+        )
+    return items
+
+
+def parse_count_text(value: Any) -> int:
+    """Convert Bilibili count strings like '12.3万' to integers."""
+    if isinstance(value, (int, float)):
+        return int(value)
+    if not isinstance(value, str):
+        return 0
+    text = value.strip().replace(",", "")
+    if not text:
+        return 0
+    multiplier = 1
+    if text.endswith("亿"):
+        multiplier = 100_000_000
+        text = text[:-1]
+    elif text.endswith("万"):
+        multiplier = 10_000
+        text = text[:-1]
+    try:
+        return int(float(text) * multiplier)
+    except ValueError:
+        return 0

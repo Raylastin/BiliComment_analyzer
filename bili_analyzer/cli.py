@@ -3,12 +3,17 @@
 from __future__ import annotations
 
 import argparse
+import json
 import logging
+from datetime import datetime
 
 from bili_analyzer.config import load_config
+from bili_analyzer.constants import SourceType, TaskStatus
 from bili_analyzer.db import create_engine, init_db, session_factory
-from bili_analyzer.services.crawler import CrawlService
+from bili_analyzer.models import Task
+from bili_analyzer.services.crawler import BatchCrawlService, CrawlService, PlayBucketConfig, TagSearchConfig
 from bili_analyzer.services.crawler.client import BiliClient
+from bili_analyzer.utils.json_utils import dumps
 from bili_analyzer.utils.logging_setup import setup_logging
 
 
@@ -25,6 +30,12 @@ def build_parser() -> argparse.ArgumentParser:
     crawl_parser.add_argument("--max-pages", type=int, default=None)
     crawl_parser.add_argument("--cookie", default=None, help="可选 Cookie，仅本机使用")
     crawl_parser.set_defaults(func=_cmd_crawl)
+
+    tag_parser = subparsers.add_parser("crawl-tag", help="按标签批量搜索并抓取评论")
+    tag_parser.add_argument("--config-file", required=True, help="批量采集 JSON 配置路径")
+    tag_parser.add_argument("--task-id", type=int, default=None, help="续爬时指定已有任务 ID")
+    tag_parser.add_argument("--cookie", default=None, help="可选 Cookie，仅本机使用")
+    tag_parser.set_defaults(func=_cmd_crawl_tag)
     return parser
 
 
@@ -64,6 +75,89 @@ def _cmd_crawl(args: argparse.Namespace) -> None:
         print("统计结果：", stats)
     finally:
         service.close()
+
+
+def _cmd_crawl_tag(args: argparse.Namespace) -> None:
+    raw = json.loads(open(args.config_file, encoding="utf-8").read())
+    config = load_config()
+    config.ensure_dirs()
+    logger = setup_logging(config.log_dir, logging.INFO)
+    engine = create_engine(config.db_path)
+    init_db(engine)
+
+    buckets = [
+        PlayBucketConfig(
+            bucket_key=item["bucket_key"],
+            count=int(item.get("count", 0)),
+            sort_by=item.get("sort_by", "play"),
+            max_pages=int(item.get("max_pages", 1)),
+        )
+        for item in raw.get("buckets", [])
+    ]
+    tag_config = TagSearchConfig(
+        keyword=raw["keyword"],
+        start_time=_parse_time(raw.get("start_time")),
+        end_time=_parse_time(raw.get("end_time")),
+        buckets=buckets,
+        page_size=int(raw.get("page_size", 20)),
+        include_replies=bool(raw.get("include_replies", True)),
+    )
+
+    factory = session_factory(engine)
+    if args.task_id:
+        task_id = args.task_id
+    else:
+        with factory() as session:
+            task = Task(
+                name=f"标签:{raw['keyword']}",
+                source_type=SourceType.TAG_SEARCH.value,
+                config_json=dumps(raw),
+                status=TaskStatus.RUNNING.value,
+            )
+            session.add(task)
+            session.commit()
+            task_id = task.id
+
+    client = BiliClient(
+        cookie=args.cookie,
+        timeout=config.crawler.request_timeout,
+        retry_times=config.crawler.retry_times,
+        rate_limit_interval=config.crawler.rate_limit_interval,
+    )
+    service = BatchCrawlService(factory, client=client)
+
+    def progress(message: str) -> None:
+        print(message)
+        logger.info(message)
+
+    try:
+        summary = service.crawl_by_tag(
+            tag_config,
+            task_id=task_id,
+            progress_callback=progress,
+        )
+        print("统计结果：", summary)
+        with factory() as session:
+            task = session.get(Task, task_id)
+            if task:
+                task.status = TaskStatus.COMPLETED.value
+                session.commit()
+    except Exception:
+        logger.exception("批量抓取失败")
+        with factory() as session:
+            task = session.get(Task, task_id)
+            if task:
+                task.status = TaskStatus.FAILED.value
+                session.commit()
+        raise
+    finally:
+        service.close()
+
+
+def _parse_time(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    return datetime.fromisoformat(value)
 
 
 def main() -> None:
