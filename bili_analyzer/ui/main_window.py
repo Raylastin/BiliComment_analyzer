@@ -10,7 +10,7 @@ from PySide6.QtWidgets import QListWidget, QListWidgetItem, QMainWindow, QMessag
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
-from bili_analyzer.config import AppConfig
+from bili_analyzer.config import AppConfig, save_config
 from bili_analyzer.constants import SourceType, TaskStatus
 from bili_analyzer.models import Comment, Task, User, Video, task_comments
 from bili_analyzer.services.analysis.emotion import EmotionService, LocalLexiconAnalyzer
@@ -342,4 +342,5 @@ class MainWindow(QMainWindow):
         self.config.ensure_dirs()
         self.task_service.export_dir = self.config.export_dir
         self.task_service.mask_mid = self.config.mask_mid
+        save_config(self.config)
         QMessageBox.information(self, "已保存", "设置已保存")
