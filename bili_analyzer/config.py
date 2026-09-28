@@ -28,7 +28,7 @@ class CrawlerConfig:
     retry_times: int = 3
     rate_limit_interval: float = 0.5
     max_workers: int = 2
-    comment_page_size: int = 49
+    comment_page_size: int = 20
     include_replies: bool = True
     max_reply_pages: int = 5
 
@@ -106,4 +106,3 @@ def save_config(config: AppConfig, path: Path | None = None) -> None:
         json.dumps(_as_dict(config), ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
-
