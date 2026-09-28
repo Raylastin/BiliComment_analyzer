@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import threading
+import time
 from collections.abc import Callable
 from typing import Any
 
@@ -42,6 +44,7 @@ class CrawlService:
         page_size: int = 49,
         progress_callback: ProgressCallback | None = None,
         cancel_check: CancelCheck | None = None,
+        pause_event: threading.Event | None = None,
     ) -> dict[str, int]:
         if cancel_check and cancel_check():
             return {"videos": 0, "comments": 0, "replies": 0, "skipped": 0}
@@ -65,6 +68,7 @@ class CrawlService:
             max_pages=max_pages,
             progress_callback=progress_callback,
             cancel_check=cancel_check,
+            pause_event=pause_event,
         )
         return {"videos": 1, **comment_stats}
 
@@ -78,6 +82,7 @@ class CrawlService:
         max_pages: int | None = None,
         progress_callback: ProgressCallback | None = None,
         cancel_check: CancelCheck | None = None,
+        pause_event: threading.Event | None = None,
     ) -> dict[str, int]:
         stats = {"comments": 0, "replies": 0, "skipped": 0}
         page = 1
@@ -85,6 +90,8 @@ class CrawlService:
             if cancel_check and cancel_check():
                 break
             if max_pages is not None and page > max_pages:
+                break
+            if not self._wait_if_paused(pause_event, cancel_check):
                 break
 
             data = self.client.get_json(
@@ -120,6 +127,7 @@ class CrawlService:
                         task_id=task_id,
                         progress_callback=progress_callback,
                         cancel_check=cancel_check,
+                        pause_event=pause_event,
                     )
                     stats["replies"] += reply_inserted
                     stats["skipped"] += reply_skipped
@@ -148,12 +156,15 @@ class CrawlService:
         task_id: int | None,
         progress_callback: ProgressCallback | None,
         cancel_check: CancelCheck | None,
+        pause_event: threading.Event | None,
     ) -> tuple[int, int]:
         inserted_total = 0
         skipped_total = 0
         page = 1
         while True:
             if cancel_check and cancel_check():
+                break
+            if not self._wait_if_paused(pause_event, cancel_check):
                 break
             data = self.client.get_json(
                 "/x/v2/reply/reply",
@@ -267,6 +278,16 @@ class CrawlService:
     def _report(callback: ProgressCallback | None, message: str) -> None:
         if callback:
             callback(message)
+
+    @staticmethod
+    def _wait_if_paused(
+        pause_event: threading.Event | None, cancel_check: CancelCheck | None
+    ) -> bool:
+        while pause_event and pause_event.is_set():
+            if cancel_check and cancel_check():
+                return False
+            time.sleep(0.1)
+        return True
 
 
 def _tags_to_json(tags: list[str]) -> str:

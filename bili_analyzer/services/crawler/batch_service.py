@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import threading
+import time
 from collections.abc import Callable
 from datetime import datetime
 from typing import Any
@@ -44,6 +46,7 @@ class BatchCrawlService:
         task_id: int | None = None,
         progress_callback: ProgressCallback | None = None,
         cancel_check: CancelCheck | None = None,
+        pause_event: threading.Event | None = None,
     ) -> dict[str, Any]:
         summary: dict[str, Any] = {
             "selected_videos": 0,
@@ -55,16 +58,20 @@ class BatchCrawlService:
         for bucket in config.enabled_buckets():
             if cancel_check and cancel_check():
                 break
+            if not self._wait_if_paused(pause_event, cancel_check):
+                break
             self._report(
                 progress_callback, f"开始区间 {bucket.bucket_key}，目标 {bucket.count} 个视频"
             )
             selected = self._select_videos_for_bucket(
-                config, bucket, task_id, progress_callback, cancel_check
+                config, bucket, task_id, progress_callback, cancel_check, pause_event
             )
             summary["selected_videos"] += len(selected)
 
             for video in selected:
                 if cancel_check and cancel_check():
+                    break
+                if not self._wait_if_paused(pause_event, cancel_check):
                     break
                 result = self._crawl_video_with_resume(
                     video=video,
@@ -72,6 +79,7 @@ class BatchCrawlService:
                     include_replies=config.include_replies,
                     progress_callback=progress_callback,
                     cancel_check=cancel_check,
+                    pause_event=pause_event,
                 )
                 if result is None:
                     summary["failed_videos"].append(video["bvid"])
@@ -88,6 +96,7 @@ class BatchCrawlService:
         task_id: int | None,
         progress_callback: ProgressCallback | None,
         cancel_check: CancelCheck | None,
+        pause_event: threading.Event | None,
     ) -> list[dict[str, Any]]:
         scope_key = self._search_scope_key(config, bucket)
         saved = self._load_progress(task_id, "tag_search", scope_key)
@@ -107,6 +116,8 @@ class BatchCrawlService:
 
         while page <= bucket.max_pages:
             if cancel_check and cancel_check():
+                break
+            if not self._wait_if_paused(pause_event, cancel_check):
                 break
             data = self.client.get_json(
                 "/x/web-interface/search/type",
@@ -181,6 +192,7 @@ class BatchCrawlService:
         include_replies: bool,
         progress_callback: ProgressCallback | None,
         cancel_check: CancelCheck | None,
+        pause_event: threading.Event | None,
     ) -> dict[str, int] | None:
         bvid = video["bvid"]
         existing = self._load_progress(task_id, "video", bvid)
@@ -196,6 +208,8 @@ class BatchCrawlService:
             return None
 
         try:
+            if not self._wait_if_paused(pause_event, cancel_check):
+                return None
             stats = self.crawl_service.crawl_comments(
                 bvid=bvid,
                 aid=aid,
@@ -203,6 +217,7 @@ class BatchCrawlService:
                 task_id=task_id,
                 progress_callback=progress_callback,
                 cancel_check=cancel_check,
+                pause_event=pause_event,
             )
         except BiliClientError as exc:
             self._save_progress(
@@ -297,3 +312,13 @@ class BatchCrawlService:
     def _report(callback: ProgressCallback | None, message: str) -> None:
         if callback:
             callback(message)
+
+    @staticmethod
+    def _wait_if_paused(
+        pause_event: threading.Event | None, cancel_check: CancelCheck | None
+    ) -> bool:
+        while pause_event and pause_event.is_set():
+            if cancel_check and cancel_check():
+                return False
+            time.sleep(0.1)
+        return True
