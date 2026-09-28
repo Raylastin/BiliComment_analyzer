@@ -26,9 +26,9 @@ class VipStatus(int, Enum):
 
 
 class EmotionLabel(str, Enum):
-    POSITIVE = "positive"
-    NEGATIVE = "negative"
-    NEUTRAL = "neutral"
+    POSITIVE = "正面"
+    NEGATIVE = "负面"
+    NEUTRAL = "中立"
 
 
 class AnalysisResultType(str, Enum):
@@ -56,4 +56,3 @@ PLAY_COUNT_BUCKETS: dict[str, tuple[int | None, int | None]] = {
     "10000_100000": (10_000, 100_000),
     "100000_inf": (100_000, None),
 }
-

@@ -11,6 +11,7 @@ from bili_analyzer.config import load_config
 from bili_analyzer.constants import SourceType, TaskStatus
 from bili_analyzer.db import create_engine, init_db, session_factory
 from bili_analyzer.models import Task
+from bili_analyzer.services.analysis.emotion import EmotionService, LocalLexiconAnalyzer
 from bili_analyzer.services.crawler import BatchCrawlService, CrawlService, PlayBucketConfig, TagSearchConfig
 from bili_analyzer.services.crawler.client import BiliClient
 from bili_analyzer.utils.json_utils import dumps
@@ -36,6 +37,11 @@ def build_parser() -> argparse.ArgumentParser:
     tag_parser.add_argument("--task-id", type=int, default=None, help="续爬时指定已有任务 ID")
     tag_parser.add_argument("--cookie", default=None, help="可选 Cookie，仅本机使用")
     tag_parser.set_defaults(func=_cmd_crawl_tag)
+
+    analyze_parser = subparsers.add_parser("analyze", help="对任务评论做情感分析")
+    analyze_parser.add_argument("--task-id", type=int, required=True)
+    analyze_parser.add_argument("--force", action="store_true", help="忽略缓存重新分析")
+    analyze_parser.set_defaults(func=_cmd_analyze)
     return parser
 
 
@@ -152,6 +158,27 @@ def _cmd_crawl_tag(args: argparse.Namespace) -> None:
         raise
     finally:
         service.close()
+
+
+def _cmd_analyze(args: argparse.Namespace) -> None:
+    config = load_config()
+    config.ensure_dirs()
+    logger = setup_logging(config.log_dir, logging.INFO)
+    engine = create_engine(config.db_path)
+    init_db(engine)
+
+    analyzer = LocalLexiconAnalyzer(
+        positive_threshold=config.emotion.positive_threshold,
+        negative_threshold=config.emotion.negative_threshold,
+    )
+    service = EmotionService(session_factory(engine), analyzer=analyzer)
+
+    def progress(message: str) -> None:
+        print(message)
+        logger.info(message)
+
+    result = service.analyze_task(args.task_id, force=args.force, progress_callback=progress)
+    print("统计结果：", result)
 
 
 def _parse_time(value: str | None) -> datetime | None:

@@ -4,7 +4,7 @@
 
 ## 当前阶段
 
-当前已完成**阶段 1~3**：项目骨架、数据库模型、BV 评论采集、标签批量搜索、播放量区间选择与断点续爬。后续阶段会加入情感分析、统计图表、UI 和打包。
+当前已完成**阶段 1~4**：项目骨架、数据库模型、BV 评论采集、标签批量搜索、播放量区间选择与断点续爬、可插拔情感分析。后续阶段会加入统计图表、UI 和打包。
 
 ## 技术栈
 
@@ -50,6 +50,9 @@ pytest
 
 # 按标签批量抓取（配置示例见 docs/batch_config.example.json）
 .\.venv\Scripts\python.exe -m bili_analyzer.cli crawl-tag --config-file batch.json
+
+# 对任务评论做情感分析（--force 忽略缓存重新分析）
+.\.venv\Scripts\python.exe -m bili_analyzer.cli analyze --task-id 1
 ```
 
 `crawl-tag` 的 JSON 配置示例：
