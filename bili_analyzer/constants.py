@@ -49,6 +49,13 @@ class CrawlStepStatus(str, Enum):
     FAILED = "failed"
 
 
+class MembershipFilter(str, Enum):
+    ALL = "all"
+    MEMBER = "member"
+    NON_MEMBER = "non_member"
+    UNKNOWN = "unknown"
+
+
 # Play-count buckets as [lower, upper) with upper == None meaning infinity.
 PLAY_COUNT_BUCKETS: dict[str, tuple[int | None, int | None]] = {
     "100_1000": (100, 1_000),

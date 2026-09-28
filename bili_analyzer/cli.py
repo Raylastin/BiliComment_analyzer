@@ -12,6 +12,7 @@ from bili_analyzer.constants import SourceType, TaskStatus
 from bili_analyzer.db import create_engine, init_db, session_factory
 from bili_analyzer.models import Task
 from bili_analyzer.services.analysis.emotion import EmotionService, LocalLexiconAnalyzer
+from bili_analyzer.services.analysis.statistics import StatisticsService
 from bili_analyzer.services.crawler import BatchCrawlService, CrawlService, PlayBucketConfig, TagSearchConfig
 from bili_analyzer.services.crawler.client import BiliClient
 from bili_analyzer.utils.json_utils import dumps
@@ -42,6 +43,12 @@ def build_parser() -> argparse.ArgumentParser:
     analyze_parser.add_argument("--task-id", type=int, required=True)
     analyze_parser.add_argument("--force", action="store_true", help="忽略缓存重新分析")
     analyze_parser.set_defaults(func=_cmd_analyze)
+
+    stats_parser = subparsers.add_parser("stats", help="输出任务统计结果")
+    stats_parser.add_argument("--task-id", type=int, required=True)
+    stats_parser.add_argument("--type", choices=["overview", "transition", "extremes"], required=True)
+    stats_parser.add_argument("--membership", default="all", choices=["all", "member", "non_member", "unknown"])
+    stats_parser.set_defaults(func=_cmd_stats)
     return parser
 
 
@@ -179,6 +186,21 @@ def _cmd_analyze(args: argparse.Namespace) -> None:
 
     result = service.analyze_task(args.task_id, force=args.force, progress_callback=progress)
     print("统计结果：", result)
+
+
+def _cmd_stats(args: argparse.Namespace) -> None:
+    config = load_config()
+    engine = create_engine(config.db_path)
+    init_db(engine)
+    service = StatisticsService(session_factory(engine))
+
+    if args.type == "overview":
+        result = service.compute_overview(args.task_id, membership=args.membership)
+    elif args.type == "transition":
+        result = service.compute_transition(args.task_id, membership=args.membership)
+    else:
+        result = service.compute_extremes(args.task_id, membership=args.membership)
+    print(json.dumps(result, ensure_ascii=False, indent=2))
 
 
 def _parse_time(value: str | None) -> datetime | None:
